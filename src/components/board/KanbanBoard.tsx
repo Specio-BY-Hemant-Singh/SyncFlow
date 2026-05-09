@@ -43,7 +43,7 @@ export default function KanbanBoard({ projectId }: { projectId: string }) {
           qTeam = query(collection(db, 'users'), where('uid', '==', user.uid));
         }
         const snap = await getDocs(qTeam);
-        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...(d.data() as object) })));
       } catch (err) {
         console.error("Failed to load assignee options", err);
       }
