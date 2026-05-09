@@ -63,7 +63,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
           q = query(collection(db, 'users'), where('uid', '==', user.uid));
         }
         const snap = await getDocs(q);
-        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setTeamMembers(snap.docs.map(d => ({ id: d.id, ...(d.data() as object) })));
       } catch (err) {
         console.error("Failed to load assignee options", err);
       }
