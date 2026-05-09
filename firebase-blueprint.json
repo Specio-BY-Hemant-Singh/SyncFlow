@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "member"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "Workspace": {
+      "title": "Workspace",
+      "description": "An organization or workspace",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "ownerId", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A project within a workspace",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "archived", "completed"] },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "teams": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["workspaceId", "title", "status", "createdAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A task within a project",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["todo", "in_progress", "review", "blocked", "completed"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "assigneeId": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "dueDate": { "type": "number" }
+      },
+      "required": ["projectId", "title", "status", "priority", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "workspaces/{workspaceId}": {
+      "schema": { "$ref": "#/entities/Workspace" },
+      "description": "Workspaces"
+    },
+    "projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Projects"
+    },
+    "tasks/{taskId}": {
+      "schema": { "$ref": "#/entities/Task" },
+      "description": "Tasks"
+    }
+  }
+}

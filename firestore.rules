@@ -1,0 +1,181 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && getUserData().role == 'admin';
+    }
+    
+    function isTeamLead() {
+      return isSignedIn() && (getUserData().role == 'team_lead' || getUserData().role == 'admin');
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        getUserData().role in ['admin', 'team_lead'] ||
+        (getUserData().team != null && resource.data.get('team', null) == getUserData().team) ||
+        resource.data.get('uid', null) == request.auth.uid
+      );
+      
+      function isValidUser(data) {
+        return (data.size() >= 5 && data.size() <= 6)
+          && data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+          && data.uid == request.auth.uid
+          && data.email is string && data.email.size() > 0 && data.email.size() <= 256
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 128
+          && data.role in ['admin', 'team_lead', 'member']
+          && data.createdAt is number
+          && (!data.keys().hasAny(['team']) || data.team is string);
+      }
+      
+      allow create: if isSignedIn() 
+                    && request.auth.uid == userId 
+                    && isValidUser(incoming());
+                    
+      allow update: if isSignedIn() 
+                    && (request.auth.uid == userId || isAdmin())
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'team'])
+                    && (incoming().name == existing().name || (incoming().name is string
+                    && incoming().name.size() > 0 
+                    && incoming().name.size() <= 128))
+                    && (incoming().role == existing().role || isAdmin())
+                    && (!incoming().diff(existing()).affectedKeys().hasAny(['team']) || incoming().team is string || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      function isValidWorkspace(data) {
+        return data.keys().hasAll(['name', 'ownerId', 'createdAt'])
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 128
+          && data.ownerId == request.auth.uid
+          && data.createdAt is number;
+      }
+      
+      allow create: if isTeamLead() 
+                    && isValidId(workspaceId)
+                    && isValidWorkspace(incoming());
+                    
+      // Only owner can update
+      allow update: if isTeamLead() 
+                    && existing().ownerId == request.auth.uid
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['name'])
+                    && incoming().name is string
+                    && incoming().name.size() > 0 
+                    && incoming().name.size() <= 128;
+      allow delete: if isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        getUserData().role in ['admin', 'team_lead'] ||
+        resource.data.get('teams', []).size() == 0 ||
+        (getUserData().team != null && getUserData().team in resource.data.get('teams', []))
+      );
+      
+      function isValidProject(data) {
+        return data.keys().hasAll(['workspaceId', 'title', 'status', 'createdAt'])
+          && data.workspaceId is string && data.workspaceId.size() > 0 && data.workspaceId.size() <= 128
+          && data.title is string && data.title.size() > 0 && data.title.size() <= 128
+          && data.status in ['active', 'archived', 'completed']
+          && data.createdAt is number
+          && (!data.keys().hasAny(['description']) || data.description is string)
+          && (!data.keys().hasAny(['updatedAt']) || data.updatedAt is number)
+          && (!data.keys().hasAny(['teams']) || (data.teams is list && data.teams.size() <= 10));
+      }
+      
+      allow create: if isTeamLead() 
+                    && isValidId(projectId)
+                    && isValidProject(incoming());
+                    
+      allow update: if isTeamLead() 
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'status', 'updatedAt', 'teams'])
+                    && (incoming().title == existing().title || (incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 128))
+                    && (incoming().status == existing().status || incoming().status in ['active', 'archived', 'completed'])
+                    && (!incoming().diff(existing()).affectedKeys().hasAny(['updatedAt']) || incoming().updatedAt is number)
+                    && (!incoming().diff(existing()).affectedKeys().hasAny(['teams']) || (incoming().teams is list && incoming().teams.size() <= 10));
+                    
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      function isValidTask(data) {
+        return data.keys().hasAll(['projectId', 'title', 'status', 'priority', 'createdAt'])
+          && data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 128
+          && data.title is string && data.title.size() > 0 && data.title.size() <= 256
+          && data.status in ['todo', 'in_progress', 'review', 'blocked', 'completed']
+          && data.priority in ['low', 'medium', 'high', 'critical']
+          && data.createdAt is number;
+      }
+      
+      allow create: if isSignedIn() 
+                    && isValidId(taskId)
+                    && isValidTask(incoming());
+                    
+      allow update: if isSignedIn() 
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'status', 'priority', 'assigneeId', 'dueDate', 'updatedAt'])
+                    && (incoming().title == existing().title || (incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 256))
+                    && (incoming().status == existing().status || incoming().status in ['todo', 'in_progress', 'review', 'blocked', 'completed'])
+                    && (incoming().priority == existing().priority || incoming().priority in ['low', 'medium', 'high', 'critical'])
+                    && incoming().updatedAt is number;
+                    
+      allow delete: if isAdmin() || isTeamLead();
+    }
+    match /comments/{commentId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      function isValidComment(data) {
+        return data.keys().hasAll(['taskId', 'content', 'authorId', 'authorName', 'createdAt'])
+          && data.taskId is string && data.taskId.size() > 0 && data.taskId.size() <= 128
+          && data.content is string && data.content.size() > 0 && data.content.size() <= 2000
+          && data.authorId == request.auth.uid
+          && data.authorName is string && data.authorName.size() > 0 && data.authorName.size() <= 128
+          && data.createdAt is number
+          && (!data.keys().hasAny(['isPinned']) || data.isPinned is bool);
+      }
+      
+      allow create: if isSignedIn() 
+                    && isValidId(commentId)
+                    && isValidComment(incoming());
+                    
+      allow update: if (isAdmin() || isTeamLead())
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['isPinned'])
+                    && incoming().isPinned is bool;
+
+      allow delete: if isSignedIn() && existing().authorId == request.auth.uid;
+    }
+    match /integrations/{integrationId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      
+      allow create, update: if isAdmin() || isTeamLead();
+      allow delete: if isAdmin() || isTeamLead();
+    }
+  }
+}
