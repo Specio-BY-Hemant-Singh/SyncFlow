@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '@/src/lib/firebase';
-import { Loader2, Settings, X } from 'lucide-react';
+import { Loader2, Settings, X, Trash2 } from 'lucide-react';
 import KanbanBoard from '@/src/components/board/KanbanBoard';
 import { useAuthStore } from '@/src/store';
 
@@ -11,6 +11,7 @@ const AVAILABLE_TEAMS = ['Engineering', 'Design', 'Marketing', 'Sales', 'Support
 
 export default function ProjectBoard() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -49,6 +50,17 @@ export default function ProjectBoard() {
     }
   });
 
+  const deleteProject = useMutation({
+    mutationFn: async () => {
+      if (!id) return;
+      await deleteDoc(doc(db, 'projects', id));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      navigate('/projects');
+    }
+  });
+
   if (isLoading) {
     return <div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 text-indigo-500 animate-spin" /></div>;
   }
@@ -67,6 +79,12 @@ export default function ProjectBoard() {
     e.preventDefault();
     if (title.trim()) {
       updateProject.mutate();
+    }
+  };
+
+  const handleDeleteProject = () => {
+    if (window.confirm("Are you sure you want to delete this project? This action cannot be undone.")) {
+      deleteProject.mutate();
     }
   };
 
@@ -133,6 +151,21 @@ export default function ProjectBoard() {
                   ))}
                 </div>
               </div>
+
+              {user?.role === 'admin' && (
+                <div className="mt-6 pt-4 border-t border-slate-100">
+                  <h3 className="text-xs font-semibold text-red-600 mb-2 uppercase tracking-wider">Danger Zone</h3>
+                  <button
+                    type="button"
+                    onClick={handleDeleteProject}
+                    disabled={deleteProject.isPending}
+                    className="w-full flex items-center justify-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-100 disabled:opacity-50 transition-colors"
+                  >
+                    {deleteProject.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    Delete Project
+                  </button>
+                </div>
+              )}
 
               <div className="pt-4 flex justify-end gap-3 mt-6 border-t border-slate-100">
                 <button
